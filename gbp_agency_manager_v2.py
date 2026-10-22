@@ -12,44 +12,159 @@ import io
 from PIL import Image
 import piexif
 
+try:
+    import pg8000.dbapi as pg8000_db
+except ImportError:
+    pg8000_db = None
+
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="BC RankEngine | Brushy Creek Media", page_icon="🌲", layout="wide")
 
-# --- INITIALIZE DATABASE ---
+# --- DATABASE CONFIG (NEON POSTGRES OR SQLITE FALLBACK) ---
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+USE_POSTGRES = bool(DATABASE_URL and pg8000_db is not None)
+
+def get_db_connection():
+    if USE_POSTGRES:
+        parsed_url = urllib.parse.urlparse(DATABASE_URL)
+        username = parsed_url.username
+        password = parsed_url.password
+        database = parsed_url.path.lstrip('/')
+        hostname = parsed_url.hostname
+        port = parsed_url.port or 5432
+        
+        return pg8000_db.connect(
+            user=username,
+            password=password,
+            database=database,
+            host=hostname,
+            port=port,
+            ssl_context=True
+        )
+    return sqlite3.connect('agency_clients.db')
+
 def init_db():
-    conn = sqlite3.connect('agency_clients.db')
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_name TEXT UNIQUE,
-            business_name TEXT,
-            website TEXT,
-            target_city TEXT,
-            primary_category TEXT,
-            services TEXT,
-            lat REAL,
-            lng REAL,
-            geo_keywords TEXT
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS audits (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_name TEXT,
-            audit_date TEXT,
-            audit_type TEXT,
-            content TEXT
-        )
-    ''')
+    if USE_POSTGRES:
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS clients (
+                id SERIAL PRIMARY KEY,
+                client_name TEXT UNIQUE,
+                business_name TEXT,
+                website TEXT,
+                target_city TEXT,
+                primary_category TEXT,
+                services TEXT,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
+                geo_keywords TEXT
+            )
+        ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS audits (
+                id SERIAL PRIMARY KEY,
+                client_name TEXT,
+                audit_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                audit_type TEXT,
+                content TEXT
+            )
+        ''')
+    else:
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_name TEXT UNIQUE,
+                business_name TEXT,
+                website TEXT,
+                target_city TEXT,
+                primary_category TEXT,
+                services TEXT,
+                lat REAL,
+                lng REAL,
+                geo_keywords TEXT
+            )
+        ''')
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS audits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_name TEXT,
+                audit_date TEXT,
+                audit_type TEXT,
+                content TEXT
+            )
+        ''')
     conn.commit()
     conn.close()
 
 init_db()
 
 # --- HELPER FUNCTIONS ---
-def get_db_connection():
-    return sqlite3.connect('agency_clients.db')
+def fetch_all_clients():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT client_name FROM clients ORDER BY client_name ASC")
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+def fetch_client_details(client_name):
+    conn = get_db_connection()
+    c = conn.cursor()
+    if USE_POSTGRES:
+        c.execute("SELECT business_name, website, target_city, primary_category, lat, lng, geo_keywords FROM clients WHERE client_name = %s", (client_name,))
+    else:
+        c.execute("SELECT business_name, website, target_city, primary_category, lat, lng, geo_keywords FROM clients WHERE client_name = ?", (client_name,))
+    row = c.fetchone()
+    conn.close()
+    return row
+
+def upsert_client(c_name, b_name, c_web, c_city, c_cat, c_lat, c_lng, c_keys):
+    conn = get_db_connection()
+    c = conn.cursor()
+    if USE_POSTGRES:
+        c.execute('''
+            INSERT INTO clients (client_name, business_name, website, target_city, primary_category, lat, lng, geo_keywords)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (client_name) DO UPDATE SET
+                business_name = EXCLUDED.business_name,
+                website = EXCLUDED.website,
+                target_city = EXCLUDED.target_city,
+                primary_category = EXCLUDED.primary_category,
+                lat = EXCLUDED.lat,
+                lng = EXCLUDED.lng,
+                geo_keywords = EXCLUDED.geo_keywords
+        ''', (c_name, b_name, c_web, c_city, c_cat, c_lat, c_lng, c_keys))
+    else:
+        c.execute('''
+            INSERT OR REPLACE INTO clients (client_name, business_name, website, target_city, primary_category, lat, lng, geo_keywords)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (c_name, b_name, c_web, c_city, c_cat, c_lat, c_lng, c_keys))
+    conn.commit()
+    conn.close()
+
+def save_audit_record(client_name, audit_type, content):
+    conn = get_db_connection()
+    c = conn.cursor()
+    if USE_POSTGRES:
+        c.execute("INSERT INTO audits (client_name, audit_type, content) VALUES (%s, %s, %s)",
+                  (client_name, audit_type, content))
+    else:
+        c.execute("INSERT INTO audits (client_name, audit_date, audit_type, content) VALUES (?, datetime('now'), ?, ?)",
+                  (client_name, audit_type, content))
+    conn.commit()
+    conn.close()
+
+def fetch_client_audits(client_name):
+    conn = get_db_connection()
+    c = conn.cursor()
+    if USE_POSTGRES:
+        c.execute("SELECT TO_CHAR(audit_date, 'YYYY-MM-DD HH24:MI'), audit_type, content FROM audits WHERE client_name = %s ORDER BY id DESC", (client_name,))
+    else:
+        c.execute("SELECT audit_date, audit_type, content FROM audits WHERE client_name = ? ORDER BY id DESC", (client_name,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
 
 def fetch_google_suggest_keywords(category, city):
     """Fetches real-time search queries directly from Google's Autocomplete engine."""
@@ -59,7 +174,6 @@ def fetch_google_suggest_keywords(category, city):
     clean_cat = category.strip()
     city_only = city.split(",")[0].strip() if city else ""
     
-    # Seed patterns that trigger high-intent local service autocomplete suggestions
     seed_queries = [
         f"{clean_cat} {city_only}".strip(),
         f"{clean_cat} near me",
@@ -79,13 +193,12 @@ def fetch_google_suggest_keywords(category, city):
             if resp.status_code == 200:
                 data = resp.json()
                 if len(data) > 1 and isinstance(data[1], list):
-                    for item in data[1][:4]:  # Take top 4 suggestions per seed
+                    for item in data[1][:4]:
                         if item.lower() not in [x.lower() for x in collected]:
                             collected.append(item)
         except Exception:
             pass
             
-    # Fallback if network blocks or category is super niche
     if not collected:
         collected = [
             f"{clean_cat.lower()} {city_only.lower()}".strip(),
@@ -122,12 +235,12 @@ def scrape_website(url):
 st.sidebar.title("🌲 BC RankEngine")
 st.sidebar.caption("Brushy Creek Media Local SEO Suite")
 
-conn = get_db_connection()
-c = conn.cursor()
-c.execute("SELECT client_name FROM clients")
-client_rows = c.fetchall()
-client_list = [row[0] for row in client_rows]
-conn.close()
+if USE_POSTGRES:
+    st.sidebar.success("🟢 Connected to Neon Cloud DB")
+else:
+    st.sidebar.warning("🟡 Local SQLite Mode")
+
+client_list = fetch_all_clients()
 
 selected_client = st.sidebar.selectbox(
     "📂 Select Active Client", 
@@ -135,16 +248,10 @@ selected_client = st.sidebar.selectbox(
     help="Select an existing client to view or update their profile, or choose '-- Add New Client --' to onboard a new business."
 )
 
-# Fetch active client data if an existing client is selected
 client_data = None
 if selected_client != "-- Add New Client --":
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("SELECT business_name, website, target_city, primary_category, lat, lng, geo_keywords FROM clients WHERE client_name = ?", (selected_client,))
-    client_data = c.fetchone()
-    conn.close()
+    client_data = fetch_client_details(selected_client)
 
-# Track client changes so session state updates cleanly when switching clients
 if "last_selected_client" not in st.session_state or st.session_state.last_selected_client != selected_client:
     st.session_state.last_selected_client = selected_client
     is_new_init = (selected_client == "-- Add New Client --")
@@ -226,7 +333,6 @@ with tab1:
             help="Google Preference: Exact GPS longitude of the storefront pin (e.g., -90.3903). Used for Geo-Grid rank simulation and EXIF photo geotagging."
         )
     
-    # --- AUTO-KEYWORD GENERATOR BUTTON ---
     st.markdown("##### 🎯 Local Search Keywords")
     if st.button("🔍 Auto-Fetch What Google Is Looking For (Based on Category & City)", help="Queries Google's live Autocomplete engine to see exact phrases local customers are typing right now."):
         if not c_cat.strip():
@@ -248,14 +354,7 @@ with tab1:
         if not target_name:
             st.error("Please enter an Internal Client Label before saving.")
         else:
-            conn = get_db_connection()
-            c = conn.cursor()
-            c.execute('''
-                INSERT OR REPLACE INTO clients (client_name, business_name, website, target_city, primary_category, lat, lng, geo_keywords)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (target_name, b_name, c_web, c_city, c_cat, c_lat, c_lng, c_keys))
-            conn.commit()
-            conn.close()
+            upsert_client(target_name, b_name, c_web, c_city, c_cat, c_lat, c_lng, c_keys)
             st.success(f"Successfully saved client: {target_name}!")
             st.rerun()
 
@@ -279,10 +378,12 @@ with tab2:
     st.header("⚡ Deep GBP Optimization & Review Miner")
     st.caption("Generate Caleb Ulku Core-30 style descriptions, expanded services, and competitor gap analysis.")
     
+    env_gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     api_key_input = st.text_input(
         "Gemini API Key", 
+        value=env_gemini_key,
         type="password", 
-        help="Paste your master Google AI Studio API key here. One agency key works for all of your clients."
+        help="Paste your master Google AI Studio API key here, or set GEMINI_API_KEY in Render Environment Variables so it loads automatically."
     )
     
     if selected_client == "-- Add New Client --" or not client_data:
@@ -316,13 +417,7 @@ with tab2:
                         output_text = response.text
                         st.markdown(output_text)
                         
-                        # Save audit to DB
-                        conn = get_db_connection()
-                        c = conn.cursor()
-                        c.execute("INSERT INTO audits (client_name, audit_date, audit_type, content) VALUES (?, datetime('now'), ?, ?)",
-                                  (selected_client, "GBP Optimization Blueprint", output_text))
-                        conn.commit()
-                        conn.close()
+                        save_audit_record(selected_client, "GBP Optimization Blueprint", output_text)
                     except Exception as e:
                         st.error(f"Error generating optimization blueprint: {e}")
 
@@ -411,11 +506,7 @@ with tab5:
     if selected_client == "-- Add New Client --":
         st.info("Select a client to view past generated history.")
     else:
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("SELECT audit_date, audit_type, content FROM audits WHERE client_name = ? ORDER BY id DESC", (selected_client,))
-        audits = c.fetchall()
-        conn.close()
+        audits = fetch_client_audits(selected_client)
         
         if not audits:
             st.info("No audit history found for this client yet.")
