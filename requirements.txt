@@ -1,0 +1,8 @@
+streamlit
+google-genai
+requests
+ beautifulsoup4
+pillow
+piexif
+folium
+streamlit-folium
