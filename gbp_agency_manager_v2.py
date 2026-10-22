@@ -122,7 +122,7 @@ def fetch_client_details(client_name):
         c.execute("SELECT business_name, website, target_city, primary_category, lat, lng, geo_keywords, market_type, service_radius FROM clients WHERE client_name = ?", (client_name,))
     row = c.fetchone()
     conn.close()
-    if row and row[7] is None: # Fallback if columns were just added
+    if row and row[7] is None:
         row = list(row)
         row[7] = "Urban Storefront"
         row[8] = 2
@@ -431,7 +431,7 @@ with tab2:
                         5. {'Rural Town Expansion Strategy: 5-10 surrounding townships/ZIP codes to target with dedicated regional landing pages.' if is_rural else 'Metro Proximity Strategy: Neighborhood targeting tactics.'}
                         """
                         response = client.models.generate_content(
-                            model='gemini-2.5-flash',
+                            model='gemini-3.8-flash',
                             contents=prompt
                         )
                         output_text = response.text
