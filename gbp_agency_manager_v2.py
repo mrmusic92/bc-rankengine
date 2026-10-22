@@ -57,6 +57,13 @@ def init_db():
                 service_radius INTEGER
             )
         ''')
+        # Auto-migrate columns if table already existed without them
+        try:
+            c.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS market_type TEXT")
+            c.execute("ALTER TABLE clients ADD COLUMN IF NOT EXISTS service_radius INTEGER")
+        except Exception:
+            pass
+
         c.execute('''
             CREATE TABLE IF NOT EXISTS audits (
                 id SERIAL PRIMARY KEY,
@@ -115,6 +122,10 @@ def fetch_client_details(client_name):
         c.execute("SELECT business_name, website, target_city, primary_category, lat, lng, geo_keywords, market_type, service_radius FROM clients WHERE client_name = ?", (client_name,))
     row = c.fetchone()
     conn.close()
+    if row and row[7] is None: # Fallback if columns were just added
+        row = list(row)
+        row[7] = "Urban Storefront"
+        row[8] = 2
     return row
 
 def upsert_client(c_name, b_name, c_web, c_city, c_cat, c_lat, c_lng, c_keys, m_type, s_radius):
