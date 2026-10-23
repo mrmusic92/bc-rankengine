@@ -1,5 +1,6 @@
 import os
 import io
+import time
 import json
 import zipfile
 import datetime
@@ -37,20 +38,19 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# CALEB ULKU SUITE CUSTOM THEME (DARK OBSIDIAN, AMBER-GOLD SIDEBAR & EMERALD UI)
+# CALEB ULKU SUITE CUSTOM THEME (FIXED FOR STREAMLIT 1.38+ DOM SELECTORS)
 # ==============================================================================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
     /* Global App Background & Typography */
-    .stApp {
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #0b0d12 !important;
         color: #f3f4f6 !important;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
     }
 
-    /* Reduce bulky default Streamlit top padding */
     .block-container {
         padding-top: 1.5rem !important;
         padding-bottom: 3rem !important;
@@ -58,24 +58,26 @@ st.markdown("""
     }
 
     /* Warm Dark Amber/Brown Sidebar (Matches Caleb Ulku Entity Profile Panel) */
-    section[data-testid="stSidebar"] {
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div {
         background: linear-gradient(180deg, #16110b 0%, #0e0b08 100%) !important;
-        border-right: 1px solid #78350f !important;
+        border-right: 1px solid #92400e !important;
     }
+
     section[data-testid="stSidebar"] label p {
         color: #fbbf24 !important;
         font-weight: 600 !important;
         font-size: 0.85rem !important;
-        text-decoration: underline dotted #b45309;
-        text-underline-offset: 4px;
+        text-decoration: underline dotted #b45309 !important;
+        text-underline-offset: 4px !important;
     }
 
-    /* Sidebar Inputs */
+    /* Sidebar Text Inputs & Textareas */
     section[data-testid="stSidebar"] input,
     section[data-testid="stSidebar"] textarea,
     section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
         background-color: #090a0f !important;
-        border: 1px solid #3b2814 !important;
+        border: 1px solid #452c14 !important;
         color: #f9fafb !important;
         border-radius: 6px !important;
     }
@@ -85,37 +87,49 @@ st.markdown("""
         box-shadow: 0 0 0 1px #f59e0b !important;
     }
 
-    /* Sidebar Primary Buttons -> Vibrant Gold/Orange (#f59e0b) */
-    section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    /* SIDEBAR PRIMARY BUTTONS -> GOLD / AMBER (#f59e0b) */
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"],
+    section[data-testid="stSidebar"] button[kind="primary"] {
         background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%) !important;
         color: #090a0f !important;
         font-weight: 700 !important;
         border: 1px solid #fbbf24 !important;
         border-radius: 8px !important;
         padding: 0.55rem 1rem !important;
-        box-shadow: 0 3px 10px rgba(245, 158, 11, 0.25) !important;
+        box-shadow: 0 3px 12px rgba(245, 158, 11, 0.3) !important;
     }
-    section[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover {
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] p,
+    section[data-testid="stSidebar"] button[kind="primary"] p {
+        color: #090a0f !important;
+        font-weight: 700 !important;
+    }
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"]:hover,
+    section[data-testid="stSidebar"] button[kind="primary"]:hover {
         background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%) !important;
-        color: #000000 !important;
+        border-color: #fde68a !important;
     }
 
-    /* Sidebar Secondary Buttons -> Dark Bronze Badge Style */
-    section[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
-        background-color: #271c10 !important;
+    /* SIDEBAR SECONDARY BUTTONS -> DARK BRONZE */
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"],
+    section[data-testid="stSidebar"] button[kind="secondary"] {
+        background-color: #291d10 !important;
         color: #fbbf24 !important;
         border: 1px solid #78350f !important;
         font-weight: 600 !important;
         border-radius: 6px !important;
     }
-    section[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover {
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"] p {
+        color: #fbbf24 !important;
+    }
+    section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]:hover {
         background-color: #3b2814 !important;
         border-color: #f59e0b !important;
     }
 
-    /* Main Workspace Primary Action Buttons -> Emerald Green (#10b981) */
-    .main .stButton > button[kind="primary"],
-    .main .stDownloadButton > button[kind="primary"] {
+    /* MAIN WORKSPACE PRIMARY BUTTONS -> EMERALD GREEN (#10b981) */
+    section[data-testid="stMain"] button[data-testid="stBaseButton-primary"],
+    .main button[data-testid="stBaseButton-primary"],
+    .main button[kind="primary"] {
         background: linear-gradient(180deg, #10b981 0%, #059669 100%) !important;
         color: #ffffff !important;
         font-weight: 700 !important;
@@ -124,26 +138,32 @@ st.markdown("""
         padding: 0.55rem 1.2rem !important;
         box-shadow: 0 3px 12px rgba(16, 185, 129, 0.25) !important;
     }
-    .main .stButton > button[kind="primary"]:hover,
-    .main .stDownloadButton > button[kind="primary"]:hover {
+    section[data-testid="stMain"] button[data-testid="stBaseButton-primary"] p,
+    .main button[data-testid="stBaseButton-primary"] p {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+    section[data-testid="stMain"] button[data-testid="stBaseButton-primary"]:hover,
+    .main button[data-testid="stBaseButton-primary"]:hover {
         background: linear-gradient(180deg, #34d399 0%, #10b981 100%) !important;
-        color: #052e16 !important;
+        border-color: #6ee7b7 !important;
     }
 
-    /* Main Workspace Secondary Action Buttons -> Clean Slate Dark Button */
-    .main .stButton > button[kind="secondary"],
-    .main .stDownloadButton > button[kind="secondary"] {
-        background-color: #1e2330 !important;
-        color: #e5e7eb !important;
-        border: 1px solid #374151 !important;
+    /* MAIN WORKSPACE SECONDARY BUTTONS -> DARK SLATE */
+    section[data-testid="stMain"] button[data-testid="stBaseButton-secondary"],
+    .main button[data-testid="stBaseButton-secondary"],
+    .main button[kind="secondary"] {
+        background-color: #1a202c !important;
+        color: #e2e8f0 !important;
+        border: 1px solid #334155 !important;
         font-weight: 600 !important;
         border-radius: 8px !important;
     }
-    .main .stButton > button[kind="secondary"]:hover,
-    .main .stDownloadButton > button[kind="secondary"]:hover {
+    section[data-testid="stMain"] button[data-testid="stBaseButton-secondary"]:hover,
+    .main button[data-testid="stBaseButton-secondary"]:hover {
         border-color: #10b981 !important;
-        color: #10b981 !important;
-        background-color: #161b26 !important;
+        color: #34d399 !important;
+        background-color: #0f172a !important;
     }
 
     /* Navigation Tabs (Matches Caleb Ulku Top Tab Bar) */
@@ -169,13 +189,14 @@ st.markdown("""
         border-radius: 6px 6px 0 0 !important;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #122420 !important;
+        background-color: #0d2821 !important;
         color: #10b981 !important;
         border-bottom: 3px solid #10b981 !important;
         border-radius: 6px 6px 0 0 !important;
     }
 
     /* Monospace Dark Code Console Textareas */
+    section[data-testid="stMain"] textarea,
     .main textarea {
         background-color: #080a0f !important;
         border: 1px solid #262b38 !important;
@@ -185,12 +206,14 @@ st.markdown("""
         line-height: 1.55 !important;
         border-radius: 8px !important;
     }
+    section[data-testid="stMain"] textarea:focus,
     .main textarea:focus {
         border-color: #10b981 !important;
         box-shadow: 0 0 0 1px #10b981 !important;
     }
 
     /* Main Text Inputs */
+    section[data-testid="stMain"] input,
     .main input {
         background-color: #080a0f !important;
         border: 1px solid #262b38 !important;
@@ -206,7 +229,7 @@ st.markdown("""
         padding: 1.1rem !important;
     }
 
-    /* Header Badges */
+    /* Header & Section Badges */
     .cu-header-bar {
         display: flex;
         align-items: center;
@@ -278,8 +301,10 @@ if not env_gemini_key and hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secr
 
 if "api_key" not in st.session_state:
     st.session_state["api_key"] = env_gemini_key
+
+# Default to gemini-flash-latest (highest free-tier quota stability, matches original Caleb Ulku tool)
 if "selected_model" not in st.session_state:
-    st.session_state["selected_model"] = "gemini-3.8-flash"
+    st.session_state["selected_model"] = "gemini-flash-latest"
 
 # --- DATABASE ENGINE & AUTO-MIGRATION ---
 def get_db_conn():
@@ -449,33 +474,54 @@ def delete_client_record(client_id):
     cur.close()
     conn.close()
 
-# --- AI & GEOCODING HELPERS ---
+# --- SMART QUOTA-SAFE AI ENGINE & GEOCODING ---
 def call_gemini(prompt, use_search=False):
     api_key = st.session_state.get("api_key", "").strip()
     if not api_key:
         st.error("⚠️ Please provide a valid Gemini API Key in the top configuration bar or Streamlit Secrets.")
         return ""
 
-    primary_model = st.session_state.get("selected_model", "gemini-3.8-flash")
-    fallback_models = [primary_model, "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash"]
-    # Remove duplicates while preserving order
-    models_to_try = list(dict.fromkeys(fallback_models))
+    primary_model = st.session_state.get("selected_model", "gemini-flash-latest")
+    # Prioritize gemini-flash-latest (matches Caleb Ulku HTML tool's free-tier pool)
+    candidate_models = [primary_model, "gemini-flash-latest", "gemini-3.8-flash", "gemini-2.0-flash"]
+    models_to_try = list(dict.fromkeys(candidate_models))
 
     last_err = None
     for m_name in models_to_try:
         try:
             if GENAI_SDK == "new":
                 client = genai.Client(api_key=api_key)
-                config = types.GenerateContentConfig(temperature=0.3)
+                # First attempt: with Google Search if requested
                 if use_search:
-                    config.tools = [{"google_search": {}}]
+                    try:
+                        cfg_search = types.GenerateContentConfig(
+                            temperature=0.3,
+                            tools=[{"google_search": {}}]
+                        )
+                        resp = client.models.generate_content(
+                            model=m_name,
+                            contents=prompt,
+                            config=cfg_search
+                        )
+                        st.session_state["selected_model"] = m_name
+                        return resp.text
+                    except Exception as search_err:
+                        # Free tier often limits Search Grounding (429). Fall back to standard call immediately!
+                        if "429" in str(search_err) or "RESOURCE_EXHAUSTED" in str(search_err):
+                            pass
+                        else:
+                            pass
+
+                # Standard generation call (uses standard high-limit free quota)
+                cfg_std = types.GenerateContentConfig(temperature=0.3)
                 resp = client.models.generate_content(
                     model=m_name,
                     contents=prompt,
-                    config=config
+                    config=cfg_std
                 )
                 st.session_state["selected_model"] = m_name
                 return resp.text
+
             elif GENAI_SDK == "legacy":
                 genai_legacy.configure(api_key=api_key)
                 model = genai_legacy.GenerativeModel(m_name)
@@ -484,9 +530,20 @@ def call_gemini(prompt, use_search=False):
                 return resp.text
         except Exception as e:
             last_err = e
-            continue
+            err_str = str(e)
+            # If 429 quota error on this specific model, pause 1 second and try the next model alias
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                time.sleep(1.0)
+                continue
+            elif "404" in err_str or "NOT_FOUND" in err_str:
+                continue
+            else:
+                break
 
-    st.error(f"Gemini API Error: {str(last_err)}")
+    st.error(
+        f"⚠️ **Gemini Free-Tier Rate Limit Reached (`429 RESOURCE_EXHAUSTED`)**: "
+        f"Google's free API tier limits requests per minute. Wait ~30 seconds and click again, or switch the model dropdown at the top to **`gemini-flash-latest`**.\n\nDetails: `{last_err}`"
+    )
     return ""
 
 def geocode_address(address):
@@ -495,7 +552,7 @@ def geocode_address(address):
     try:
         url = "https://nominatim.openstreetmap.org/search"
         params = {"q": address, "format": "json", "limit": 1}
-        headers = {"User-Agent": "BC_RankEngine_SEO_Suite/3.0"}
+        headers = {"User-Agent": "BC_RankEngine_SEO_Suite/3.1"}
         r = requests.get(url, params=params, headers=headers, timeout=8)
         data = r.json()
         if data:
@@ -565,7 +622,7 @@ def build_ics_reminder(business_name):
     return "\r\n".join(ics_lines)
 
 # ==============================================================================
-# TOP HEADER & MODEL BAR (MATCHES SCREENSHOT HEADER)
+# TOP HEADER & MODEL BAR (MATCHES CALEB ULKU SCREENSHOT HEADER)
 # ==============================================================================
 db_status_text = "Neon Cloud DB Connected" if USE_POSTGRES else "Local SQLite Mode"
 st.markdown(f"""
@@ -573,7 +630,7 @@ st.markdown(f"""
     <span style="font-size: 1.6rem;">📍</span>
     <span class="cu-title">GBP Synergy & Local SEO Suite</span>
     <span class="cu-badge-gold">Caleb Ulku Framework</span>
-    <span class="cu-badge-green">Auto-Switched: {st.session_state.get('selected_model', 'gemini-3.8-flash')}</span>
+    <span class="cu-badge-green">Auto-Switched: {st.session_state.get('selected_model', 'gemini-flash-latest')}</span>
     <span class="cu-badge-green">{db_status_text}</span>
 </div>
 <p style="color: #9ca3af; font-size: 0.85rem; margin-top: 2px; margin-bottom: 14px;">
@@ -584,15 +641,15 @@ st.markdown(f"""
 with st.container(border=True):
     t_col1, t_col2, t_col3 = st.columns([2, 2, 1.2])
     with t_col1:
-        model_options = ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash"]
-        curr_m = st.session_state.get("selected_model", "gemini-3.8-flash")
+        model_options = ["gemini-flash-latest", "gemini-3.8-flash", "gemini-2.0-flash"]
+        curr_m = st.session_state.get("selected_model", "gemini-flash-latest")
         m_idx = model_options.index(curr_m) if curr_m in model_options else 0
         chosen_model = st.selectbox(
             "AI Model Engine",
             model_options,
             index=m_idx,
             label_visibility="collapsed",
-            help="Select the active Google Gemini Flash model."
+            help="Select the active Google Gemini Flash model. 'gemini-flash-latest' has the most generous free-tier quota."
         )
         st.session_state["selected_model"] = chosen_model
     with t_col2:
@@ -675,22 +732,22 @@ with st.sidebar:
         help="Google Guideline: Use your exact real-world legal business name as shown on signage, LLC docs, and utility bills. Never stuff keywords here."
     )
 
-    if st.button("🌐 Search Web & Auto-Fill Business Info", use_container_width=True, type="primary", help="Uses Gemini 3.8 Flash with Google Search Grounding to look up this business online and auto-populate its niche, phone, address, and USP."):
+    if st.button("🌐 Search Web & Auto-Fill Business Info", use_container_width=True, type="primary", help="Looks up this business and auto-populates its niche, phone, address, GPS coordinates, and USP."):
         if not b_name.strip():
             st.warning("Enter a Business Legal Name first.")
         else:
-            with st.spinner(f"Searching web for {b_name}..."):
+            with st.spinner(f"Looking up {b_name}..."):
                 lookup_prompt = f"""
-                Search the web for the business "{b_name}" {st.session_state.get('form_city', '')}.
-                Return ONLY a valid JSON object with these exact keys (use empty string if unknown):
+                Provide the business profile details for "{b_name}" located in or near {st.session_state.get('form_city', 'Missouri')}.
+                Return ONLY a valid JSON object with these exact keys (infer realistic niche/USP if small local business):
                 {{
                   "primary_niche": "Primary GBP category (e.g. Appliance Repair)",
                   "target_city": "City, State",
-                  "years_in_business": "e.g. 15+",
-                  "phone": "Local phone number",
-                  "usp": "2-3 sentence summary of specialties, brands serviced, and unique selling proposition",
-                  "website_url": "Official website URL",
-                  "street_address": "Full street address",
+                  "years_in_business": "e.g. 10+",
+                  "phone": "Local phone number if known, else empty string",
+                  "usp": "2-3 sentence summary of specialties, services, and unique selling proposition",
+                  "website_url": "Official website URL if known, else empty string",
+                  "street_address": "Full street address if known, else City, State",
                   "latitude": "Decimal latitude",
                   "longitude": "Decimal longitude"
                 }}
@@ -699,6 +756,9 @@ with st.sidebar:
                 if raw:
                     try:
                         clean_json = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                        # Extract JSON block if surrounded by text
+                        if "{" in clean_json and "}" in clean_json:
+                            clean_json = clean_json[clean_json.find("{"):clean_json.rfind("}")+1]
                         parsed_info = json.loads(clean_json)
                         st.session_state["form_niche"] = parsed_info.get("primary_niche") or st.session_state["form_niche"]
                         st.session_state["form_city"] = parsed_info.get("target_city") or st.session_state["form_city"]
@@ -707,8 +767,16 @@ with st.sidebar:
                         st.session_state["form_usp"] = parsed_info.get("usp") or st.session_state["form_usp"]
                         st.session_state["form_url"] = parsed_info.get("website_url") or st.session_state["form_url"]
                         st.session_state["form_addr"] = parsed_info.get("street_address") or st.session_state["form_addr"]
-                        st.session_state["form_lat"] = str(parsed_info.get("latitude") or st.session_state["form_lat"])
-                        st.session_state["form_lon"] = str(parsed_info.get("longitude") or st.session_state["form_lon"])
+                        
+                        # Also geocode via OpenStreetMap if lat/lon missing
+                        lat_val = str(parsed_info.get("latitude") or "").strip()
+                        lon_val = str(parsed_info.get("longitude") or "").strip()
+                        if not lat_val or not lon_val:
+                            g_lat, g_lon = geocode_address(st.session_state["form_addr"] or st.session_state["form_city"])
+                            lat_val = g_lat or st.session_state["form_lat"]
+                            lon_val = g_lon or st.session_state["form_lon"]
+                        st.session_state["form_lat"] = lat_val
+                        st.session_state["form_lon"] = lon_val
                         st.rerun()
                     except Exception:
                         st.warning("Could not parse structured web results automatically. Check fields manually.")
@@ -760,7 +828,7 @@ with st.sidebar:
         help="Even if you hide your address as a Service Area Business, enter your physical shop address or target city center here to geotag photos."
     )
 
-    if st.button("🧭 Auto-Fill GPS Coordinates from Address", use_container_width=True, type="secondary", help="Converts the street address above into exact GPS Latitude and Longitude coordinates."):
+    if st.button("🧭 Auto-Fill GPS Coordinates from Address", use_container_width=True, type="secondary", help="Converts the street address above into exact GPS Latitude and Longitude coordinates via OpenStreetMap (uses 0 Gemini quota)."):
         lat_res, lon_res = geocode_address(b_addr or b_city)
         if lat_res and lon_res:
             st.session_state["form_lat"] = lat_res
@@ -841,7 +909,7 @@ with tabs[0]:
         st.caption("Caleb's framework starts by generating 25+ specific services first, then mapping 5 GBP categories to those services, followed by a 750-character USP description. You can freely edit any generated output below.")
 
         if st.button("✨ Generate All 3 Core Assets", type="primary", help="Generates 25+ granular services, 5 mapped GBP categories, and a 750-character description in one click."):
-            with st.spinner("Generating Services-First Architecture via Gemini 3.8 Flash..."):
+            with st.spinner("Generating Services-First Architecture..."):
                 prompt_all = f"""
                 Act as an elite Local SEO specialist executing the Caleb Ulku GBP framework for:
                 Business: {b_name}
@@ -862,6 +930,8 @@ with tabs[0]:
                 if raw_res:
                     try:
                         clean = raw_res.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                        if "{" in clean and "}" in clean:
+                            clean = clean[clean.find("{"):clean.rfind("}")+1]
                         parsed = json.loads(clean)
                         s_txt = parsed.get("services", "")
                         if isinstance(s_txt, list):
@@ -1050,6 +1120,8 @@ with tabs[2]:
                     if raw_posts:
                         try:
                             clean_p = raw_posts.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+                            if "[" in clean_p and "]" in clean_p:
+                                clean_p = clean_p[clean_p.find("["):clean_p.rfind("]")+1]
                             posts_list = json.loads(clean_p)
                             base_date = datetime.date.today() + datetime.timedelta(days=1)
                             enriched = []
